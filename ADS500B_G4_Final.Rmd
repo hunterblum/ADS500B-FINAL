@@ -1,0 +1,559 @@
+---
+title: "ADS500B Group 4 Final"
+author: 'Nicholas Lee, Andrew Pak Kim, Hunter Blum '
+date: "12/8/2021"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#R libraries
+library(reticulate)
+library(MASS)
+library(caret)
+library(car)
+library(psych)
+
+library(tidyverse)
+```
+
+```{python}
+##IMPORT PACKAGES##
+import pandas as pd
+import numpy as np
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+plt.rcParams['figure.figsize'] = [14, 10]
+import seaborn as sns
+from scipy import stats
+
+```
+
+```{python}
+##IMPORT DATAFILES##
+df = pd.read_csv("house_sales.csv", header = 0, sep=",")
+df.head()
+```
+
+```{python}
+print(df.shape) #There are 21,613 records and 21 columns
+```
+
+# Variable Identification
+```{python}
+housing = {
+    'Feature': ['id', 'date', 'price', 'bedrooms', 'bathrooms', 'sqft_living', 'sqft_lot', 'floors', 'waterfront', 'view', 'condition', 'grade', 'sqft_above', 'sqft_basement', 'yr_built', 'yr_renovated', 'zipcode', 'lat', 'long', 'sqft_living15', 'sqft_lot15'],
+    'Variable Type': ['Categorical', 'Ordinal', 'Categorical', 'Numerical', 'Numerical', 'Categorical', 'Categorical', 'Numerical', 'Numerical', 'Numerical', 'Ordinal', 'Ordinal', 'Categorical', 'Categorical', 'Numerical', 'Numerical', 'Categorical', 'Numerical', 'Numerical', 'Categorical', 'Categorical'],
+    'Variable Type 2': ['Independent', 'Independent', 'Dependent', 'Independent', 'Independent', 'Independent', 'Independent', 'Independent', 'Independent', 'Independent', 'Independent', 'Independent', 'Independent', 'Independent', 'Independent', 'Independent', 'Independent', 'Independent', 'Independent', 'Independent', 'Independent']
+}
+```
+
+```{python}
+vdf = pd.DataFrame(housing)
+```
+
+```{python}
+vdf
+```
+
+```{python}
+group = vdf.groupby(['Variable Type', 'Variable Type 2'])
+group.count()
+```
+```{python}
+Variable = ['Categorical', 'Numerical', 'Ordinal']
+Housing = [3,9,9]
+```
+
+```{python}
+ypos = np.arange(len(Variable))
+ypos
+```
+
+```{python}
+plt.clf()
+plt.xticks(ypos, Variable)
+plt.ylabel("Number of Housing Features")
+plt.title("Variable Indentification of Housing Features")
+plt.bar(ypos,Housing, label="HousingFeatures")
+plt.legend()
+plt.show()
+```
+
+# Dealing with missing data
+```{python}
+#Check for null values
+df.isnull().sum()
+```
+
+```{python}
+df.corr() #Outputs correlation table
+```
+
+### To fill in the missing number of bathrooms and bedrooms, first look at the correlation between the two variables. This is because houses have a number of bathrooms and bedrooms based on their size.
+```{python}
+plt.clf()
+plt.scatter(df['bedrooms'], df['bathrooms'])
+plt.xlabel('Number of bedrooms')
+plt.ylabel('Number of bathrooms')
+plt.title('Scatterplot of number of bedrooms against number of bathrooms')
+plt.show()
+#Correlation
+print(df['bedrooms'].corr(df['bathrooms']))
+
+```
+
+```{python}
+#Outlier
+df.loc[df['bedrooms'] > 30] #Believe that 33 is an incorrect entry
+```
+
+```{python}
+#Correct one outlier for bedrooms
+df.loc[15870, 'bedrooms'] = 3.0
+```
+
+```{python}
+#First category: Bedrooms
+#Check distribution to see if a measure of centrality can be used
+plt.clf()
+plt.hist(df['bedrooms'], bins = 20, edgecolor='black', linewidth=1.5)
+plt.xlabel('Number of bedrooms')
+plt.ylabel('Count')
+plt.title('Histogram of the Number of Bedrooms')
+plt.show()
+print(df['bedrooms'].mean())
+print(df['bedrooms'].median())
+##Based on the histogram, the lack or normality indicates that mean cannot be used to replace missing values
+##The median will be used to replace the missing values because it is unaffected by outliers.
+##In addition, in practical terms, the number of bedrooms must be a whole number.
+```
+
+```{python}
+#Identify all records with a missing value for bedrooms and replace the value with 3, as rooms can only be whole numbers
+#bedroom_na = df.loc[df['bedrooms'].isnull()].index.tolist()
+df['bedrooms'].fillna(3, inplace = True)
+```
+
+```{python}
+#Second Category: Bathrooms
+#Check distribution of data
+plt.clf()
+plt.hist(df['bathrooms'], edgecolor='black', linewidth=2)
+plt.xlabel('Number of Bathrooms')
+plt.ylabel('Count')
+plt.title('Histogram of the Number of Bathrooms')
+plt.show()
+print('The mean number of bathrooms is: ' + str(df['bathrooms'].mean()))
+print('The median number of bathrooms is: ' + str(df['bathrooms'].median()))
+```
+
+```{python}
+#Fill missing values of the number of bathrooms with 2.25 > bathrooms can be whole or in increments of quarter sizes
+df['bathrooms'].fillna(2.25, inplace = True)
+```
+
+### Fill in missing values for sqft_living by 2 methods
+### First, natural logarithmic transformation
+```{python}
+#Third Category: sqft_living
+plt.clf()
+plt.hist(df['sqft_living'], edgecolor = 'black', linewidth = 1.2)
+plt.xlabel('Living Area (square feet)')
+plt.ylabel('Count')
+plt.title('Histogram of Living Area in Square Feet')
+plt.show()
+df['sqft_living'].describe()
+```
+
+```{python}
+#Data Transformation - Natural Logarithmic Transformation
+plt.clf()
+plt.hist(np.log(df['sqft_living']), bins = 20, edgecolor='black', linewidth=1.2)
+plt.xlabel('Natural log of living area (square feet)')
+plt.ylabel('Frequency')
+plt.title('Histogram of the Natural Logarithmic Transformation of Living Area in Square Feet')
+plt.show()
+print("The natural log mean of sqft_living is: " + str(np.log(df['sqft_living'].mean())))
+print("The natural log median of sqft_living is: " + str(np.log(df['sqft_living'].median())))
+#Distribution is visually approximately normal
+
+```
+
+```{python}
+#Insert new ln(sqft_living) column
+df.insert(6, "ln_sqft_living", np.log(df['sqft_living']))
+df['ln_sqft_living'].round(1)
+df['ln_sqft_living'].fillna(7.6, inplace = True)
+df['ln_sqft_living'].head()
+```
+
+### Second method: linear regression
+### sqft_living and sqft_above have a correlation coefficient value of 0.875966. This represents a strong positive relationship between the two variables. Therefore, sqft_above can be used to estimate missing values for sqft_living, by a linear model.
+
+```{python}
+plt.scatter(df['sqft_above'], df['sqft_living'])
+
+#X value - sqft_above, Y value - sqft_living
+x = df['sqft_above']
+y = df['sqft_living']
+
+idx = np.isfinite(x) & np.isfinite(y) #Calculates trend line using only coordinate pairs without NaN Values
+trend = np.polyfit(x[idx], y[idx], 1)
+print(trend) #Shows an array where the first value is the slope (35.80) and the second value is the intercept (-11,210.4837)
+
+plt.clf()
+sns.regplot(x = 'sqft_above', y = 'sqft_living', data = df)
+plt.xlabel('Sqft_above')
+plt.ylabel('Living Area (Square Feet)')
+plt.title('Living Area in Sqare Feet Against Sqft_above')
+plt.show()
+
+#Correlation Coefficient
+print("Correlation Coefficient: " + str(df['sqft_above'].corr(df['sqft_living'])))
+
+#Slope value: 0.9700242
+#Intercept: 345.750737
+
+```
+
+#### Linear Regression equation ['sqft_living'] = 0.9700242['sqft_above'] + 345.750737
+```{python}
+##Fill missing values in sqft_living based on linear regression
+sqftLiving_na_index = df.loc[df['sqft_living'].isnull()].index.tolist() #Obtain all NaN values for 'sqft_living'
+df.loc[sqftLiving_na_index, 'sqft_living'] = round((df.loc[sqftLiving_na_index,'sqft_above']*0.9700242)+345.750737,1)
+
+```
+
+### Filling missing values for sqft_lot
+### Method 1. Replace Missing Values Using Linear Regression
+```{python}
+# sqft_lot and sqft_lot15 have a correlation value of: 0.728800
+plt.scatter(df['sqft_lot15'], df['sqft_lot'])
+
+#X value - sqft_above, Y value - sqft_living
+x = df['sqft_lot15']
+y = df['sqft_lot']
+
+idx = np.isfinite(x) & np.isfinite(y) #Calculates trend line using only coordinate pairs without NaN Values
+trend = np.polyfit(x[idx], y[idx], 1)
+print(trend) #Shows an array where the first value is the slope (35.80) and the second value is the intercept (-11,210.4837)
+
+plt.clf()
+sns.regplot(x = 'sqft_lot15', y = 'sqft_lot', data = df)
+plt.xlabel('Sqft_lot15')
+plt.ylabel('Sqft_lot')
+plt.title('Lot15 in Sqare Feet Against Sqft_Lot')
+plt.show()
+
+#Correlation Coefficient
+print("Correlation Coefficient: " + str(df['sqft_lot15'].corr(df['sqft_lot'])))
+
+#Slope value: 1.0652693
+#Intercept: 844.83532749
+```
+
+##Fill missing values in sqft_living based on linear 
+```{python}
+sqftlot_na_index = df.loc[df['sqft_lot'].isnull()].index.tolist() #Obtain all NaN values for 'sqft_lot'
+df.loc[sqftlot_na_index, 'sqft_lot'] = round((df.loc[sqftlot_na_index,'sqft_lot15']*1.0652693)+844.83532749,1)
+```
+
+```{python}
+plt.clf()
+plt.hist(df['sqft_lot'], edgecolor='black', linewidth=1.5)
+plt.show()
+```
+
+### Method 2. Replace with the natural log mean
+```{python}
+#Natural Logarithmic Transformation reveals a somewhat normal distribution given outliers
+plt.clf()
+plt.hist(np.log(df['sqft_lot']), bins = 15, edgecolor='black', linewidth=1.5)
+plt.show()
+print('The natural log mean number of swft_lot is: ' + str(np.log(df['bathrooms'].mean())))
+print('The natural log median number of sqft_lot is: ' + str(np.log(df['bathrooms'].median())))
+```
+
+```{python}
+df.insert(8, "ln_sqft_lot", np.log(df['sqft_lot']))
+df['ln_sqft_lot'].round(1)
+df['ln_sqft_lot'].head()
+```
+
+# Cleaning the Data
+```{python}
+# The date is in an extraneous format (20141013T000000)
+# Objective: Remove T000000, and hyphen-delimit the date in to year-month-day
+df['date'] = df['date'].str.replace('T000000', '', regex = True) #Removes T000000
+df['date'] = pd.to_datetime(df.date) #Changes yyyymmdd to yyyy-mm-dd
+df['date'].sort_values() #Sorts values by date
+
+```
+
+# General Data Exploration
+## New Variable Correlations with No Missing Values
+```{python}
+plt.clf()
+corr_subset = df.iloc[:,1:] #Removes id Column
+plt.figure(figsize=(18, 10))
+sns.heatmap(corr_subset.corr(), cmap='Blues', annot = True)
+plt.title('Heatmap of Correlation Values')
+plt.show()
+```
+
+### For a model to predict price, we would want variables with a moderate to strong correlation to price, without overfitting. Thus, we could select bathrooms, with a correlation value of 0.52, sqft_living (0.7), view (0.4), grade (0.67), sqft_above (0.61), and sqft_living15 (0.59) as predictor variables.
+
+## Descriptive Statistics for Each Variable
+```{python}
+df.iloc[:,1:].describe()
+```
+
+# Each Predictor Variable Against Price
+```{python}
+plt.clf()
+plt.hist(df['price'])
+plt.xlabel('Home Price')
+plt.ylabel('Frequency')
+plt.title('Distribution of Home Prices')
+plt.show()
+```
+```{python}
+plt.clf()
+df['ln_price'] = np.log(df['price'])
+plt.hist(df['ln_price'])
+plt.xlabel('Natural Log of Price')
+plt.ylabel('Frequency')
+plt.title('Distribution of the Natural Log of House Prices')
+plt.show()
+```
+
+
+## Bathrooms
+```{python}
+bathrooms_df = pd.DataFrame(df['bathrooms'].value_counts().reset_index())
+bathrooms_df.columns = ['Number of Bathrooms', 'Counts'] 
+```
+
+```{python}
+plt.clf()
+sns.boxplot(x='bathrooms',y='ln_price', data=df)
+plt.title('Boxplots of Prices by The Number of Bathrooms')
+plt.xlabel('Number of Bathrooms')
+plt.ylabel('ln(price)')
+plt.show()
+```
+```{python}
+price_bathrooms = pd.DataFrame(df.groupby('bathrooms')['ln_price'].median())
+price_bathrooms = price_bathrooms.reset_index()
+plt.clf()
+sns.regplot(x='bathrooms', y='ln_price', data=price_bathrooms)
+plt.xlabel('Number of Bathrooms')
+plt.ylabel('Median of the Natural Log of House Prices')
+plt.title('Median Transformed Price based on the Number of Bathrooms')
+plt.show()
+```
+
+## Sqft_Living
+```{python}
+plt.clf()
+sns.regplot(x='sqft_living', y='ln_price', data=df)
+plt.xlabel('Living Room Space (Square Feet)')
+plt.title('Natural Log(Price) By Living Room Space in Square Feet')
+plt.show()
+```
+
+## View
+```{python}
+plt.clf()
+sns.boxplot(x='view',y='ln_price', data=df)
+plt.title('Boxplots of ln(Price) by View Ratings')
+plt.xlabel('View Rating')
+plt.ylabel('ln(Price)')
+plt.show()
+```
+
+```{python}
+price_view = pd.DataFrame(df.groupby('view')['ln_price'].median())
+price_view = price_view.reset_index()
+plt.clf()
+sns.regplot(x='view', y='ln_price', data=price_view)
+plt.xlabel('Number of View')
+plt.ylabel('Median of ln(House Price)')
+plt.title('Median ln(Price) based on the View Rating')
+plt.show()
+```
+
+## Grade
+```{python}
+plt.clf()
+sns.boxplot(x='grade',y='ln_price', data=df)
+plt.title('Boxplots of ln(Prices) by Grade')
+plt.xlabel('House Grade')
+plt.ylabel('ln(Price)')
+plt.show()
+```
+
+## Sqft_above
+```{python}
+plt.clf()
+sns.regplot(x='sqft_above', y='ln_price', data=df)
+plt.xlabel('Above Space (Square Feet)')
+plt.ylabel('ln(Price)')
+plt.title('ln(Price) By Above Space in Square Feet')
+plt.show()
+```
+
+## Sqft_living15
+```{python}
+plt.clf()
+sns.regplot(x='sqft_living15', y='ln_price', data=df)
+plt.xlabel('Living Room Space 15 (Square Feet)')
+plt.ylabel('ln(price)')
+plt.title('ln(Price) By Living Room Space 15 in Square Feet')
+plt.show()
+```
+
+# Time-Series Plots
+```{python}
+#Year Built
+year_built_df = pd.DataFrame(df['yr_built'].value_counts(sort=True))
+year_built_df = year_built_df.reset_index()
+year_built_df.columns = ['Year Built', 'Counts']
+
+plt.clf()
+sns.lmplot(x = 'Year Built', y = 'Counts', data = year_built_df,
+          fit_reg = True, height = 8, aspect = 2, line_kws={'color': 'red'})
+sns.lineplot(x = 'Year Built', y = 'Counts', data = year_built_df)
+plt.ylabel('Number of Houses Built')
+plt.title('Number of Houses Build Throughout the Years')
+plt.show()
+```
+
+```{python}
+#Year - avg. price
+year_avgprice_df = pd.DataFrame(df.groupby('yr_built')['price'].mean())
+year_avgprice_df = year_avgprice_df.reset_index()
+year_avgprice_df.columns = ['yr_built', 'price']
+year_avgprice_df.head()
+
+plt.clf()
+slope, intercept, r_value, p_value, std_err = stats.linregress(year_avgprice_df['yr_built'],year_avgprice_df['price'])
+sns.lmplot(x = 'yr_built', y = 'price', data = year_avgprice_df,
+          fit_reg = True, height = 8, aspect = 2, line_kws = {'color' : 'green',
+                                                             'label':"y={0:.1f}x+{1:.1f}".format(slope,intercept)})
+sns.lineplot(x = 'yr_built', y = 'price', data = year_avgprice_df)
+plt.title('Average Price Throughout the Years')
+plt.xlabel('Year Built')
+plt.ylabel('Average Price')
+plt.show()
+```
+# Convert to R
+```{python}
+df.to_csv("House.csv", index=False)
+```
+
+```{r}
+House <- read.csv("House.csv")
+House <- House %>% dplyr::select(!ln_price)
+```
+
+# Regression Model: Predicting the price of a home
+## Remove the duplicate house IDs:
+Since houses were all sold within a year span, the same houses will be selling for very similar prices. We got rid of the duplicates to reduce our chance of over fitting our model. 
+```{r}
+sum(duplicated(House$id))
+
+House <- House %>% group_by(id) %>% slice(1)
+#House_map <- House
+```
+
+## Regression Data Preparation
+```{r}
+#Get rid of uneeded variables
+Uneeded <- c("id", "date", "zipcode", "lat", "long", "sqft_living", "sqft_lot")
+House <- House %>% ungroup() %>% dplyr::select(-one_of(Uneeded))
+
+
+#Collinearity
+model.full <- lm(price~., data = House)
+summary(model.full)
+vif(model.full)
+
+##Remove high VIF
+High_vif <- c("ln_sqft_living", "sqft_above")
+
+House <- House %>% dplyr::select(-one_of(High_vif))
+
+model.new <- lm(price~.,data=House)
+vif(model.new)
+
+
+
+#Bring back natural log of price for different modelling dataset 
+House_log_price <- House %>% mutate(logPrice = log(price))
+House_log_price <- House_log_price %>% dplyr::select(!price)
+
+```
+
+## Human-guessed best model
+```{r}
+Model_cor <- lm(logPrice ~ bathrooms + view + grade + sqft_living15, data = House_log_price)
+summary(Model_cor)
+plot(Model_cor)
+```
+
+## Forward Regression Model on Raw Price
+```{r}
+#Set seed for consistency and set training method
+set.seed(123)
+
+train.control <- trainControl(method = "cv")
+
+#Build Forward Trained Model on non-log transformed model
+forward.model <- train(price ~., data=House,
+                       method="leapForward",
+                       tuneGrid = data.frame(nvmax = 1:13),
+                       trControl = train.control)
+
+
+forward.model$results
+forward.model$bestTune
+plot(forward.model)
+
+#Model diagnostics
+coef(forward.model$finalModel, 5)
+
+Forward_model_1 <- lm(price ~ bathrooms + waterfront + grade + yr_built + sqft_living15, data = House)
+
+plot(Forward_model_1)
+```
+
+## Forward Regression Model on Transformed Price
+```{r}
+#Forward Log Model
+forward.log <- train(logPrice ~., data=House_log_price,
+                       method="leapForward",
+                       tuneGrid = data.frame(nvmax = 1:13),
+                       trControl = train.control)
+
+forward.log$results
+forward.log$bestTune
+summary(forward.log$finalModel)
+plot(forward.log)
+
+#Five Variable Model
+coef(forward.log$finalModel, 5)
+
+Final_model_log <- lm(logPrice~bathrooms, view + grade + yr_built + sqft_living15, data = House_log_price)
+
+plot(Final_model_log)
+
+```
+
+### Final Equation: ln(price) 'predicted' = 0.16(bathrooms) + 0.068(view) + 0.25(grade) + 0.00014(sqft_living15) - 0.0059(yr_built) + 22.25
